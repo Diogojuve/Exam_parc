@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Configuration.AddUserSecrets<Program>();
 
 // Render.com asigna el puerto por variable de entorno PORT
 var renderPort = Environment.GetEnvironmentVariable("PORT");
