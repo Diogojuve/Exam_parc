@@ -46,27 +46,38 @@
 }
 
 @section Scripts {
-    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
     <script>
-        const connection = new signalR.HubConnectionBuilder()
-            .withUrl("/hubs/incidencias")
-            .withAutomaticReconnect()
-            .build();
+        const pieSocketApiKey = "@ViewData["PieSocketApiKey"]";
+        const pieSocketCluster = "@ViewData["PieSocketCluster"]";
+        const wsUrl = `wss://${pieSocketCluster}.piesocket.com/v3/incidencias?api_key=${pieSocketApiKey}&notify_self=1`;
 
-        connection.on("IncidenciaActualizada", function (data) {
-            const fila = document.getElementById("fila-" + data.id);
-            if (fila && data.estado === "Cerrada") {
-                fila.remove();
-            }
-        });
+        function conectarWebSocket() {
+            const ws = new WebSocket(wsUrl);
 
-        connection.onreconnected(function () {
-            // Al reconectar, refrescamos la página para consultar el estado vigente
-            window.location.reload();
-        });
+            ws.onmessage = function (event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.evento === "IncidenciaActualizada" && data.estado === "Cerrada") {
+                        const fila = document.getElementById("fila-" + data.id);
+                        if (fila) fila.remove();
+                    }
+                } catch (e) {
+                    console.error("Mensaje no valido de PieSocket", e);
+                }
+            };
 
-        connection.start().catch(function (err) {
-            console.error(err);
-        });
+            ws.onclose = function () {
+                console.log("WebSocket cerrado, reconectando y consultando estado vigente...");
+                setTimeout(function () {
+                    window.location.reload();
+                }, 2000);
+            };
+
+            ws.onerror = function (err) {
+                console.error("Error WebSocket PieSocket", err);
+            };
+        }
+
+        conectarWebSocket();
     </script>
 }

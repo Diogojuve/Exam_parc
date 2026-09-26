@@ -40,6 +40,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 // MVC
 builder.Services.AddControllersWithViews();
 builder.Services.AddSignalR();
+builder.Services.AddHttpClient();
 
 // Algolia (servicio propio; la clave nunca se expone al navegador)
 builder.Services.AddSingleton<IAlgoliaService, AlgoliaService>();
