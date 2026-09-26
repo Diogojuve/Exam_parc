@@ -1,8 +1,11 @@
+using System.Text.Json;
 using IncidenciasApp.Data;
+using IncidenciasApp.Hubs;
 using IncidenciasApp.Models;
 using IncidenciasApp.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace IncidenciasApp.Areas.Operaciones.Controllers
@@ -13,16 +16,17 @@ namespace IncidenciasApp.Areas.Operaciones.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IAlgoliaService _algolia;
+        private readonly IHubContext<IncidenciasHub> _hub;
         private readonly ILogger<IncidenciasController> _logger;
 
-        public IncidenciasController(ApplicationDbContext context, IAlgoliaService algolia, ILogger<IncidenciasController> logger)
+        public IncidenciasController(ApplicationDbContext context, IAlgoliaService algolia, IHubContext<IncidenciasHub> hub, ILogger<IncidenciasController> logger)
         {
             _context = context;
             _algolia = algolia;
+            _hub = hub;
             _logger = logger;
         }
 
-        // GET /Operaciones/Incidencias?q=texto
         public async Task<IActionResult> Index(string? q)
         {
             List<Incidencia> incidencias;
@@ -42,15 +46,20 @@ namespace IncidenciasApp.Areas.Operaciones.Controllers
                 incidencias = await _context.Incidencias
                     .Where(i => i.Estado == EstadoIncidencia.Abierta && estacionesEncontradas.Contains(i.Estacion))
                     .ToListAsync();
-
-                _logger.LogInformation("Búsqueda Algolia '{Query}' devolvió {Cantidad} resultados abiertos", q, incidencias.Count);
             }
 
             ViewData["Query"] = q;
             return View(incidencias);
         }
 
-        // POST /Operaciones/Incidencias/Cerrar/5
+        [HttpGet]
+        public async Task<IActionResult> EstadoActual(int id)
+        {
+            var incidencia = await _context.Incidencias.FindAsync(id);
+            if (incidencia == null) return NotFound();
+            return Json(new { id = incidencia.Id, estado = incidencia.Estado.ToString() });
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Cerrar(int id)
@@ -61,7 +70,9 @@ namespace IncidenciasApp.Areas.Operaciones.Controllers
                 incidencia.Estado = EstadoIncidencia.Cerrada;
                 incidencia.FechaCierre = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-                _logger.LogInformation("Incidencia {Id} cerrada", id);
+
+                await _hub.Clients.All.SendAsync("IncidenciaActualizada", new { id = incidencia.Id, estado = incidencia.Estado.ToString() });
+                _logger.LogInformation("Incidencia {Id} cerrada; evento IncidenciaActualizada publicado", id);
             }
 
             return RedirectToAction(nameof(Index));
