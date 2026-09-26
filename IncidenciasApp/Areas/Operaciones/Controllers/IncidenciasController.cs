@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace IncidenciasApp.Areas.Operaciones.Controllers
 {
@@ -14,16 +15,20 @@ namespace IncidenciasApp.Areas.Operaciones.Controllers
     [Authorize]
     public class IncidenciasController : Controller
     {
+        private const string CacheKeyListado = "incidencias:abiertas";
+
         private readonly ApplicationDbContext _context;
         private readonly IAlgoliaService _algolia;
         private readonly IHubContext<IncidenciasHub> _hub;
+        private readonly IDistributedCache _cache;
         private readonly ILogger<IncidenciasController> _logger;
 
-        public IncidenciasController(ApplicationDbContext context, IAlgoliaService algolia, IHubContext<IncidenciasHub> hub, ILogger<IncidenciasController> logger)
+        public IncidenciasController(ApplicationDbContext context, IAlgoliaService algolia, IHubContext<IncidenciasHub> hub, IDistributedCache cache, ILogger<IncidenciasController> logger)
         {
             _context = context;
             _algolia = algolia;
             _hub = hub;
+            _cache = cache;
             _logger = logger;
         }
 
@@ -33,10 +38,27 @@ namespace IncidenciasApp.Areas.Operaciones.Controllers
 
             if (string.IsNullOrWhiteSpace(q))
             {
-                incidencias = await _context.Incidencias
-                    .Where(i => i.Estado == EstadoIncidencia.Abierta)
-                    .OrderByDescending(i => i.Id)
-                    .ToListAsync();
+                var cacheado = await _cache.GetStringAsync(CacheKeyListado);
+                if (!string.IsNullOrEmpty(cacheado))
+                {
+                    incidencias = JsonSerializer.Deserialize<List<Incidencia>>(cacheado)!;
+                    _logger.LogInformation("Listado de incidencias leido desde REDIS (cache)");
+                }
+                else
+                {
+                    incidencias = await _context.Incidencias
+                        .Where(i => i.Estado == EstadoIncidencia.Abierta)
+                        .OrderByDescending(i => i.Id)
+                        .ToListAsync();
+
+                    _logger.LogInformation("Listado de incidencias leido desde la BASE DE DATOS");
+
+                    var opciones = new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60)
+                    };
+                    await _cache.SetStringAsync(CacheKeyListado, JsonSerializer.Serialize(incidencias), opciones);
+                }
             }
             else
             {
@@ -71,8 +93,9 @@ namespace IncidenciasApp.Areas.Operaciones.Controllers
                 incidencia.FechaCierre = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
+                await _cache.RemoveAsync(CacheKeyListado);
                 await _hub.Clients.All.SendAsync("IncidenciaActualizada", new { id = incidencia.Id, estado = incidencia.Estado.ToString() });
-                _logger.LogInformation("Incidencia {Id} cerrada; evento IncidenciaActualizada publicado", id);
+                _logger.LogInformation("Incidencia {Id} cerrada; cache invalidada; evento IncidenciaActualizada publicado", id);
             }
 
             return RedirectToAction(nameof(Index));
