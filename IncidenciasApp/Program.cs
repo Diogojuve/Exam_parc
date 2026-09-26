@@ -1,4 +1,5 @@
 using IncidenciasApp.Data;
+using IncidenciasApp.Hubs;
 using IncidenciasApp.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -38,6 +39,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 
 // MVC
 builder.Services.AddControllersWithViews();
+builder.Services.AddSignalR();
 
 // Algolia (servicio propio; la clave nunca se expone al navegador)
 builder.Services.AddSingleton<IAlgoliaService, AlgoliaService>();
@@ -77,6 +79,8 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapHub<IncidenciasHub>("/hubs/incidencias");
 
 app.MapControllerRoute(
     name: "areas",

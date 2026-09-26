@@ -1,13 +1,13 @@
 @model List<IncidenciasApp.Models.Incidencia>
 
 @{
-    ViewData["Title"] = "Incidencias abiertas encontradas";
+    ViewData["Title"] = "Incidencias abiertas en tiempo real";
 }
 
-<h1>Incidencias abiertas encontradas</h1>
+<h1>Incidencias abiertas en tiempo real</h1>
 
 <form method="get" asp-action="Index" class="mb-3 d-flex" style="max-width:400px; gap:8px;">
-    <input type="text" name="q" value="@ViewData["Query"]" class="form-control" placeholder="Buscar por estacion o descripcion..." />
+    <input type="text" name="q" value="@ViewData["Query"]" class="form-control" placeholder="Buscar por estación o descripción..." />
     <button type="submit" class="btn btn-primary">Buscar</button>
 </form>
 
@@ -21,14 +21,14 @@
             <th></th>
         </tr>
     </thead>
-    <tbody>
+    <tbody id="tabla-incidencias">
         @foreach (var incidencia in Model)
         {
-            <tr>
+            <tr id="fila-@incidencia.Id">
                 <td>@incidencia.Estacion</td>
                 <td>@incidencia.Descripcion</td>
                 <td>@incidencia.Prioridad</td>
-                <td>@incidencia.Estado</td>
+                <td class="estado">@incidencia.Estado</td>
                 <td>
                     <form asp-action="Cerrar" asp-route-id="@incidencia.Id" method="post" class="d-inline">
                         @Html.AntiForgeryToken()
@@ -43,4 +43,30 @@
 @if (!Model.Any())
 {
     <p>No hay incidencias abiertas.</p>
+}
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+    <script>
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/hubs/incidencias")
+            .withAutomaticReconnect()
+            .build();
+
+        connection.on("IncidenciaActualizada", function (data) {
+            const fila = document.getElementById("fila-" + data.id);
+            if (fila && data.estado === "Cerrada") {
+                fila.remove();
+            }
+        });
+
+        connection.onreconnected(function () {
+            // Al reconectar, refrescamos la página para consultar el estado vigente
+            window.location.reload();
+        });
+
+        connection.start().catch(function (err) {
+            console.error(err);
+        });
+    </script>
 }
