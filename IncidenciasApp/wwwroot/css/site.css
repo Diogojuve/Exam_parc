@@ -1,0 +1,7 @@
+body {
+  padding-top: 0;
+}
+
+.table td, .table th {
+  vertical-align: middle;
+}
